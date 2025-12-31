@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/csv"
 	"fmt"
 	"os"
@@ -22,7 +21,7 @@ func main() {
 	defer browser.MustClose()
 
 	// 從外部檔案讀取股票代號列表
-	stockList, err := readLines("stocks.txt")
+	stockList, err := readCSV("stocks.csv")
 	if err != nil {
 		panic(fmt.Errorf("讀取股票列表失敗: %v", err))
 	}
@@ -113,23 +112,31 @@ func scrapeStock(browser *rod.Browser, stockNo string) {
 	fmt.Printf("已儲存至 %s\n\n", fileName)
 }
 
-// readLines 讀取檔案並回傳每一行的內容
-func readLines(filename string) ([]string, error) {
+// readCSV 讀取 CSV 檔案並回傳第一欄的內容
+func readCSV(filename string) ([]string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			lines = append(lines, line)
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	var list []string
+	for _, record := range records {
+		// 確保該行有資料，並取第一欄作為股票代號
+		if len(record) > 0 {
+			val := strings.TrimSpace(record[0])
+			if val != "" {
+				list = append(list, val)
+			}
 		}
 	}
-	return lines, scanner.Err()
+	return list, nil
 }
 
 /*
