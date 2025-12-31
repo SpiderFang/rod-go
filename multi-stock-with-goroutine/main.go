@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"os"
@@ -20,8 +21,11 @@ func main() {
 	browser := rod.New().ControlURL(url).MustConnect()
 	defer browser.MustClose()
 
-	// 定義要抓取的股票代號列表
-	stockList := []string{"2330", "2317", "2603", "2454", "2881", "2882", "2891", "2002", "1301", "1303"}
+	// 從外部檔案讀取股票代號列表
+	stockList, err := readLines("stocks.txt")
+	if err != nil {
+		panic(fmt.Errorf("讀取股票列表失敗: %v", err))
+	}
 
 	var wg sync.WaitGroup
 	// 建立一個容量為 3 的 buffered channel，用來限制同時執行的數量 (Semaphore)
@@ -107,6 +111,25 @@ func scrapeStock(browser *rod.Browser, stockNo string) {
 		}
 	}
 	fmt.Printf("已儲存至 %s\n\n", fileName)
+}
+
+// readLines 讀取檔案並回傳每一行的內容
+func readLines(filename string) ([]string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines, scanner.Err()
 }
 
 /*
