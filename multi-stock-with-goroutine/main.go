@@ -31,6 +31,10 @@ func main() {
 	// 這在 Go 的並發程式設計（Concurrency）中是非常道地的寫法。見末端的註解說明
 	sem := make(chan struct{}, 3)
 
+	// 設定要查詢的年份 (注意：證交所網站使用民國年，例如 114) 與月份
+	targetYear := "114"
+	targetMonth := "12"
+
 	for _, stockNo := range stockList {
 		wg.Add(1)
 		sem <- struct{}{} // 試圖佔用一個名額，如果目前已經有 3 個在跑，這裡會阻塞等待
@@ -43,13 +47,13 @@ func main() {
 					fmt.Printf("股票代號 %s 發生錯誤 (跳過): %v\n", id, r)
 				}
 			}()
-			scrapeStock(browser, id)
+			scrapeStock(browser, id, targetYear, targetMonth)
 		}(stockNo)
 	}
 	wg.Wait()
 }
 
-func scrapeStock(browser *rod.Browser, stockNo string) {
+func scrapeStock(browser *rod.Browser, stockNo string, year, month string) {
 	fmt.Printf("正在處理股票代號: %s\n", stockNo)
 	page := browser.MustPage("https://www.twse.com.tw/zh/trading/historical/stock-day-avg.html")
 	defer page.MustClose() // 確保每個分頁處理完後關閉
@@ -57,6 +61,10 @@ func scrapeStock(browser *rod.Browser, stockNo string) {
 	page.MustWaitLoad()
 	page.MustWaitElementsMoreThan("form", 0)
 	page.MustWaitStable() // 等待頁面穩定，確保 Loading 遮罩已消失
+
+	// 選取年份與月份 (使用 name 屬性定位下拉選單)
+	page.MustElement("select[name='yy']").MustSelect(year)
+	page.MustElement("select[name='mm']").MustSelect(month)
 
 	// 找 input（Element UI）
 	input := page.
