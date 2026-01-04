@@ -12,6 +12,13 @@ import (
 	"github.com/go-rod/rod/lib/launcher"
 )
 
+// SearchTask 定義每一個抓取任務的參數
+type SearchTask struct {
+	StockNo string
+	Year    string
+	Month   string
+}
+
 func main() {
 	url := launcher.New().
 		Headless(false).
@@ -21,7 +28,7 @@ func main() {
 	defer browser.MustClose()
 
 	// 從外部檔案讀取股票代號列表
-	stockList, err := readCSV("stocks.csv")
+	tasks, err := readCSV("stocks.csv")
 	if err != nil {
 		panic(fmt.Errorf("讀取股票列表失敗: %v", err))
 	}
@@ -31,30 +38,26 @@ func main() {
 	// 這在 Go 的並發程式設計（Concurrency）中是非常道地的寫法。見末端的註解說明
 	sem := make(chan struct{}, 3)
 
-	// 設定要查詢的年份 (注意：證交所網站使用民國年，例如 114) 與月份
-	targetYear := "114"
-	targetMonth := "12"
-
-	for _, stockNo := range stockList {
+	for _, task := range tasks {
 		wg.Add(1)
 		sem <- struct{}{} // 試圖佔用一個名額，如果目前已經有 3 個在跑，這裡會阻塞等待
-		go func(id string) {
+		go func(t SearchTask) {
 			defer wg.Done()
 			defer func() { <-sem }() // 任務結束時（無論成功或失敗），釋放名額
 			// 加入錯誤恢復機制 (Recover)，避免單一任務失敗導致整個程式崩潰
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("股票代號 %s 發生錯誤 (跳過): %v\n", id, r)
+					fmt.Printf("任務 %s (%s/%s) 發生錯誤 (跳過): %v\n", t.StockNo, t.Year, t.Month, r)
 				}
 			}()
-			scrapeStock(browser, id, targetYear, targetMonth)
-		}(stockNo)
+			scrapeStock(browser, t.StockNo, t.Year, t.Month)
+		}(task)
 	}
 	wg.Wait()
 }
 
 func scrapeStock(browser *rod.Browser, stockNo string, year, month string) {
-	fmt.Printf("正在處理股票代號: %s\n", stockNo)
+	fmt.Printf("正在處理: %s (%s/%s)\n", stockNo, year, month)
 	page := browser.MustPage("https://www.twse.com.tw/zh/trading/historical/stock-day-avg.html")
 	defer page.MustClose() // 確保每個分頁處理完後關閉
 
@@ -94,7 +97,7 @@ func scrapeStock(browser *rod.Browser, stockNo string, year, month string) {
 	fmt.Printf("找到 %d 筆資料\n", len(rows))
 
 	// 建立 CSV 檔案
-	fileName := fmt.Sprintf("stock_data_%s.csv", stockNo)
+	fileName := fmt.Sprintf("stock_data_%s_%s_%s.csv", stockNo, year, month)
 	f, err := os.Create(fileName)
 	if err != nil {
 		panic(err)
@@ -120,8 +123,8 @@ func scrapeStock(browser *rod.Browser, stockNo string, year, month string) {
 	fmt.Printf("已儲存至 %s\n\n", fileName)
 }
 
-// readCSV 讀取 CSV 檔案並回傳第一欄的內容
-func readCSV(filename string) ([]string, error) {
+// readCSV 讀取 CSV 檔案並回傳任務列表
+func readCSV(filename string) ([]SearchTask, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -134,17 +137,18 @@ func readCSV(filename string) ([]string, error) {
 		return nil, err
 	}
 
-	var list []string
+	var tasks []SearchTask
 	for _, record := range records {
-		// 確保該行有資料，並取第一欄作為股票代號
-		if len(record) > 0 {
-			val := strings.TrimSpace(record[0])
-			if val != "" {
-				list = append(list, val)
-			}
+		// 確保該行至少有 3 欄 (代號, 年, 月)
+		if len(record) >= 3 {
+			tasks = append(tasks, SearchTask{
+				StockNo: strings.TrimSpace(record[0]),
+				Year:    strings.TrimSpace(record[1]),
+				Month:   strings.TrimSpace(record[2]),
+			})
 		}
 	}
-	return list, nil
+	return tasks, nil
 }
 
 /*
