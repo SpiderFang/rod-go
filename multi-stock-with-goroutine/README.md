@@ -101,3 +101,33 @@
 1. 定義了一個新的結構 SearchTask: 建立了一個結構來包裝 StockNo, Year, Month，讓程式碼更具可讀性。
 2. 修改readCSV 更新: 現在它會檢查 CSV 是否至少有 3 個欄位，並回傳 []SearchTask 而不是單純的字串切片。
 3. 檔名唯一性: 在 scrapeStock 中，將輸出檔名改為 stock_data_{代號}_{年}_{月}.csv。這點非常重要，因為如果同時抓取同一支股票的不同月份（例如並發執行 11 月和 12 月），若檔名只有股票代號，會導致檔案被覆蓋或寫入衝突。
+
+
+## 為這個專案添加單元測試（Unit Test）
+
+為這個專案添加單元測試（Unit Test），最適合的切入點是測試 邏輯處理 的部分，也就是 readCSV 函式。這部分的邏輯獨立且單純（讀取檔案、解析 CSV、去除空白），非常適合編寫單元測試。
+
+至於 scrapeStock 函式，因為它涉及瀏覽器操作與網路請求，通常屬於 整合測試（Integration Test） 的範疇，測試成本較高（需要 Mock 瀏覽器或架設測試伺服器），建議先從 readCSV 開始建立測試基礎。
+
+要為這個專案添加單元測試，可以使用 Go 的內建測試框架 `testing`。以下是一些步驟和範例，說明如何為主要功能撰寫單元測試。
+1. 建立測試檔案
+在 main.go 同一層目錄下（/Users/spider/Workspace/GoProjects/rod-go/multi-stock-with-goroutine/），建立一個新檔案 main_test.go。
+Go 語言的測試檔案必須以 _test.go 結尾，並且與被測試的程式碼位於同一個 package（這裡是 package main）。
+
+2. 如何執行測試
+開啟終端機（Terminal），切換到該目錄，然後執行以下指令：
+
+執行所有測試：go test -v
+-v 參數會顯示詳細的測試過程（Verbose）。
+
+執行特定測試：go test -v -run TestReadCSV
+
+測試程式碼重點解析:
+1. Table-Driven Tests: 這是 Go 社群最推薦的測試寫法。我們定義了一個 tests slice，裡面包含了各種情境（正常、有空白、格式錯誤等）。這樣如果要加新測試案例，只要在 slice 裡加一行即可，不用複製貼上程式碼。
+
+2. 暫存檔案 (os.CreateTemp): 因為 readCSV 需要讀取實體檔案，我們在測試中使用 os.CreateTemp 建立臨時檔案，並在測試結束後用 defer os.Remove 清除，這樣可以確保測試環境乾淨，不會依賴外部特定的 stocks.csv。
+
+3. 邊界條件測試:
+   - 空白處理: 測試了 2330 這種帶有空白的情況，確保 strings.TrimSpace 有正常運作。
+   - 欄位不足: 測試了只有兩欄的資料，確保程式不會 Crash 且正確忽略該行。
+   - 格式錯誤: 測試了 CSV 格式損壞的情況，確保函式會回傳 error。
